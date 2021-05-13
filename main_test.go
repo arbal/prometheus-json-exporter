@@ -1,112 +1,341 @@
-package main_test
+package main
 
 import (
 	"encoding/json"
 	"reflect"
 	"testing"
 
-	"github.com/shiroyagicorp/prometheus-json-exporter"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 )
 
-type kvPair struct {
-	key   string
-	value float64
+func refString(s string) *string {
+	return &s
 }
 
-type receiver struct {
-	received []kvPair
+func refFloat64(f float64) *float64 {
+	return &f
 }
 
-func (r *receiver) Receive(key string, value float64) {
-	r.received = append(r.received, kvPair{key, value})
+func refMetricType(mt dto.MetricType) *dto.MetricType {
+	return &mt
 }
 
 func TestWalkJSON(t *testing.T) {
 	testData := []struct {
 		name     string
 		bytes    []byte
-		expected []kvPair
+		expected []*dto.MetricFamily
 	}{
 		{
 			name:  "float value",
 			bytes: []byte(`{"x": 1.0}`),
-			expected: []kvPair{
-				kvPair{key: "x", value: 1.0},
+			expected: []*dto.MetricFamily{
+				&dto.MetricFamily{
+					Name: refString("x"),
+					Help: refString("Retrieved value"),
+					Type: refMetricType(dto.MetricType_GAUGE),
+					Metric: []*dto.Metric{
+						&dto.Metric{
+							Gauge: &dto.Gauge{
+								Value: refFloat64(1.0),
+							},
+						},
+					},
+				},
 			},
 		},
 		{
 			name:  "int value",
 			bytes: []byte(`{"x": 1}`),
-			expected: []kvPair{
-				kvPair{key: "x", value: 1.0},
+			expected: []*dto.MetricFamily{
+				&dto.MetricFamily{
+					Name: refString("x"),
+					Help: refString("Retrieved value"),
+					Type: refMetricType(dto.MetricType_GAUGE),
+					Metric: []*dto.Metric{
+						&dto.Metric{
+							Gauge: &dto.Gauge{
+								Value: refFloat64(1.0),
+							},
+						},
+					},
+				},
 			},
 		},
 		{
 			name:  "bool value",
 			bytes: []byte(`{"x": true}`),
-			expected: []kvPair{
-				kvPair{key: "x", value: 1.0},
+			expected: []*dto.MetricFamily{
+				&dto.MetricFamily{
+					Name: refString("x"),
+					Help: refString("Retrieved value"),
+					Type: refMetricType(dto.MetricType_GAUGE),
+					Metric: []*dto.Metric{
+						&dto.Metric{
+							Gauge: &dto.Gauge{
+								Value: refFloat64(1.0),
+							},
+						},
+					},
+				},
 			},
 		},
 		{
 			name:     "string value",
 			bytes:    []byte(`{"x": "ok"}`),
-			expected: nil,
+			expected: []*dto.MetricFamily{},
 		},
 		{
 			name:     "null value",
 			bytes:    []byte(`{"x": null}`),
-			expected: nil,
+			expected: []*dto.MetricFamily{},
 		},
 		{
 			name:  "array value",
 			bytes: []byte(`{"x": [1, 2, 3]}`),
-			expected: []kvPair{
-				kvPair{key: "x__0", value: 1},
-				kvPair{key: "x__1", value: 2},
-				kvPair{key: "x__2", value: 3},
+			expected: []*dto.MetricFamily{
+				&dto.MetricFamily{
+					Name: refString("x::array_0"),
+					Help: refString("Retrieved value"),
+					Type: refMetricType(dto.MetricType_GAUGE),
+					Metric: []*dto.Metric{
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("0"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(1.0),
+							},
+						},
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("1"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(2.0),
+							},
+						},
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("2"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(3.0),
+							},
+						},
+					},
+				},
 			},
 		},
 		{
 			name:  "nested value",
 			bytes: []byte(`{"x": {"y": 1}}`),
-			expected: []kvPair{
-				kvPair{key: "x.y", value: 1.0},
+			expected: []*dto.MetricFamily{
+				&dto.MetricFamily{
+					Name: refString("x::y"),
+					Help: refString("Retrieved value"),
+					Type: refMetricType(dto.MetricType_GAUGE),
+					Metric: []*dto.Metric{
+						&dto.Metric{
+							Gauge: &dto.Gauge{
+								Value: refFloat64(1.0),
+							},
+						},
+					},
+				},
 			},
 		},
 		{
 			name:  "nested^2 value",
 			bytes: []byte(`{"x": {"y": {"z": 1}}}`),
-			expected: []kvPair{
-				kvPair{key: "x.y.z", value: 1.0},
+			expected: []*dto.MetricFamily{
+				&dto.MetricFamily{
+					Name: refString("x::y::z"),
+					Help: refString("Retrieved value"),
+					Type: refMetricType(dto.MetricType_GAUGE),
+					Metric: []*dto.Metric{
+						&dto.Metric{
+							Gauge: &dto.Gauge{
+								Value: refFloat64(1.0),
+							},
+						},
+					},
+				},
 			},
 		},
 		{
 			name:  "array in nested value",
 			bytes: []byte(`{"x": {"y": [1, 2, 3]}}`),
-			expected: []kvPair{
-				kvPair{key: "x.y__0", value: 1},
-				kvPair{key: "x.y__1", value: 2},
-				kvPair{key: "x.y__2", value: 3},
+			expected: []*dto.MetricFamily{
+				&dto.MetricFamily{
+					Name: refString("x::y::array_0"),
+					Help: refString("Retrieved value"),
+					Type: refMetricType(dto.MetricType_GAUGE),
+					Metric: []*dto.Metric{
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("0"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(1.0),
+							},
+						},
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("1"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(2.0),
+							},
+						},
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("2"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(3.0),
+							},
+						},
+					},
+				},
 			},
 		},
 		{
 			name:  "array in array value",
 			bytes: []byte(`{"x": [[1, 2], [3, 4]]}`),
-			expected: []kvPair{
-				kvPair{key: "x__0__0", value: 1},
-				kvPair{key: "x__0__1", value: 2},
-				kvPair{key: "x__1__0", value: 3},
-				kvPair{key: "x__1__1", value: 4},
+			expected: []*dto.MetricFamily{
+				&dto.MetricFamily{
+					Name: refString("x::array_0::array_1"),
+					Help: refString("Retrieved value"),
+					Type: refMetricType(dto.MetricType_GAUGE),
+					Metric: []*dto.Metric{
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("0"),
+								},
+								&dto.LabelPair{
+									Name:  refString("array_1_index"),
+									Value: refString("0"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(1.0),
+							},
+						},
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("0"),
+								},
+								&dto.LabelPair{
+									Name:  refString("array_1_index"),
+									Value: refString("1"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(2.0),
+							},
+						},
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("1"),
+								},
+								&dto.LabelPair{
+									Name:  refString("array_1_index"),
+									Value: refString("0"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(3.0),
+							},
+						},
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("1"),
+								},
+								&dto.LabelPair{
+									Name:  refString("array_1_index"),
+									Value: refString("1"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(4.0),
+							},
+						},
+					},
+				},
 			},
 		},
 		{
 			name:  "array at root",
 			bytes: []byte(`[1, 2, 3]`),
-			expected: []kvPair{
-				kvPair{key: "__0", value: 1},
-				kvPair{key: "__1", value: 2},
-				kvPair{key: "__2", value: 3},
+			expected: []*dto.MetricFamily{
+				&dto.MetricFamily{
+					Name: refString("array_0"),
+					Help: refString("Retrieved value"),
+					Type: refMetricType(dto.MetricType_GAUGE),
+					Metric: []*dto.Metric{
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("0"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(1.0),
+							},
+						},
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("1"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(2.0),
+							},
+						},
+						&dto.Metric{
+							Label: []*dto.LabelPair{
+								&dto.LabelPair{
+									Name:  refString("array_0_index"),
+									Value: refString("2"),
+								},
+							},
+							Gauge: &dto.Gauge{
+								Value: refFloat64(3.0),
+							},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -119,10 +348,15 @@ func TestWalkJSON(t *testing.T) {
 				t.Errorf("Error: %v", err)
 			}
 
-			r := &receiver{}
-			main.WalkJSON("", jsonData, r)
-			if !reflect.DeepEqual(r.received, tt.expected) {
-				t.Errorf("Got: %#v, expected: %#v", r.received, tt.expected)
+			registry := prometheus.NewRegistry()
+
+			doWalkJSON("", jsonData, registry)
+			actual, err := registry.Gather()
+			if err != nil {
+				t.Errorf("Error: %v", err)
+			}
+			if !reflect.DeepEqual(actual, tt.expected) {
+				t.Errorf("Got: %+v, expected: %+v", actual, tt.expected)
 			}
 		})
 	}

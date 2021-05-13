@@ -8,41 +8,48 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-type ReceiverFunc func(key string, value float64)
+type ReceiverFunc func(key string, value float64, indices []int, gaugeVecs map[string]*prometheus.GaugeVec)
 
-func (receiver ReceiverFunc) Receive(key string, value float64) {
-	receiver(key, value)
+func (receiver ReceiverFunc) Receive(key string, value float64, indices []int, gaugeVecs map[string]*prometheus.GaugeVec) {
+	receiver(key, value, indices, gaugeVecs)
 }
 
 type Receiver interface {
-	Receive(key string, value float64)
+	Receive(key string, value float64, indices []int, gaugeVecs map[string]*prometheus.GaugeVec)
 }
 
-func WalkJSON(path string, jsonData interface{}, receiver Receiver) {
+func WalkJSON(path string, jsonData interface{}, indices []int, gaugeVecs map[string]*prometheus.GaugeVec, receiver Receiver) {
 	switch v := jsonData.(type) {
 	case int:
-		receiver.Receive(path, float64(v))
+		receiver.Receive(path, float64(v), indices, gaugeVecs)
 	case float64:
-		receiver.Receive(path, v)
+		receiver.Receive(path, v, indices, gaugeVecs)
 	case bool:
 		n := 0.0
 		if v {
 			n = 1.0
 		}
-		receiver.Receive(path, n)
+		receiver.Receive(path, n, indices, gaugeVecs)
 	case string:
 		// ignore
 	case nil:
 		// ignore
 	case []interface{}:
-		prefix := path + "__"
+		prefix := ""
+		if path != "" {
+			prefix = path + "::"
+		}
+		indicesNext := make([]int, len(indices)+1)
+		copy(indicesNext, indices)
 		for i, x := range v {
-			WalkJSON(fmt.Sprintf("%s%d", prefix, i), x, receiver)
+			indicesNext[len(indices)] = i
+			WalkJSON(fmt.Sprintf("%sarray_%d", prefix, len(indices)), x, indicesNext, gaugeVecs, receiver)
 		}
 	case map[string]interface{}:
 		prefix := ""
@@ -50,7 +57,7 @@ func WalkJSON(path string, jsonData interface{}, receiver Receiver) {
 			prefix = path + "::"
 		}
 		for k, x := range v {
-			WalkJSON(fmt.Sprintf("%s%s", prefix, k), x, receiver)
+			WalkJSON(fmt.Sprintf("%s%s", prefix, k), x, indices, gaugeVecs, receiver)
 		}
 	default:
 		log.Printf("unkown type: %#v", v)
@@ -91,6 +98,32 @@ func init() {
 	}
 }
 
+func doWalkJSON(prefix string, jsonData interface{}, registry *prometheus.Registry) {
+	WalkJSON(prefix, jsonData, []int{}, map[string]*prometheus.GaugeVec{}, ReceiverFunc(func(key string, value float64, indices []int, gaugeVecs map[string]*prometheus.GaugeVec) {
+		g, ok := gaugeVecs[key]
+		if !ok {
+			labels := make([]string, len(indices))
+			for array, _ := range indices {
+				labels[array] = fmt.Sprintf("array_%d_index", array)
+			}
+			g = prometheus.NewGaugeVec(
+				prometheus.GaugeOpts{
+					Name: key,
+					Help: "Retrieved value",
+				},
+				labels,
+			)
+			gaugeVecs[key] = g
+			registry.MustRegister(g)
+		}
+		labelsWithValues := prometheus.Labels{}
+		for array, index := range indices {
+			labelsWithValues[fmt.Sprintf("array_%d_index", array)] = strconv.Itoa(index)
+		}
+		g.With(labelsWithValues).Set(value)
+	}))
+}
+
 func probeHandler(w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 
@@ -111,16 +144,7 @@ func probeHandler(w http.ResponseWriter, r *http.Request) {
 
 	registry := prometheus.NewRegistry()
 
-	WalkJSON("", jsonData, ReceiverFunc(func(key string, value float64) {
-		g := prometheus.NewGauge(
-			prometheus.GaugeOpts{
-				Name: prefix + key,
-				Help: "Retrieved value",
-			},
-		)
-		registry.MustRegister(g)
-		g.Set(value)
-	}))
+	doWalkJSON(prefix, jsonData, registry)
 
 	h := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
 	h.ServeHTTP(w, r)
