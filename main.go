@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -54,7 +55,7 @@ func WalkJSON(path string, jsonData interface{}, indices []int, gaugeVecs map[st
 	case map[string]interface{}:
 		prefix := ""
 		if path != "" {
-			prefix = path + "::"
+			prefix = strings.ReplaceAll(path, "-", "_") + "::"
 		}
 		for k, x := range v {
 			WalkJSON(fmt.Sprintf("%s%s", prefix, k), x, indices, gaugeVecs, receiver)
