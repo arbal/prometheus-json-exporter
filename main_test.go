@@ -84,12 +84,12 @@ func TestWalkJSON(t *testing.T) {
 		{
 			name:     "string value",
 			bytes:    []byte(`{"x": "ok"}`),
-			expected: []*dto.MetricFamily{},
+			expected: nil,
 		},
 		{
 			name:     "null value",
 			bytes:    []byte(`{"x": null}`),
-			expected: []*dto.MetricFamily{},
+			expected: nil,
 		},
 		{
 			name:  "array value",
